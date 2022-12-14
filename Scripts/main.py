@@ -1,30 +1,39 @@
 # Sebastian Magri
 from emissivity_data import y, e, y_vs_e
 import numpy as np
-from calc_radiance import  calc_radiance
+from calc_radiance import calc_radiance #, peak_bb_emission
 from power_to_det import system_specs
 
 T = 1677  # Temperature in K of metal sample
+def main(y):
+
+    # TODO change peak_y and peak_Ly to not manual entry but to API or calculated
+    peak_y = 1.727e-6 # in m -- peak spectral wavelength
+    peak_Ly = 54325700000 # in W/m^2/sr/m
 
 
-def main():
     # Get bands to be working with. The outputs are y_vs_e of band
     opti_y_vs_e, opti_y, opti_e = get_band(.38e-6, .78e-6) # Optical band
     swir_y_vs_e, swir_y, swir_e = get_band(1.4e-6, 3e-6) # SWIR band
     mwir_y_vs_e, mwir_y, mwir_e = get_band(3e-6, 8e-6) # MWIR band
     lwir_y_vs_e, lwir_y, lwir_e = get_band(8e-6,14.99999e-6) # LWIR band
 
-    # Calculate band radiances
+    # Calculate thermal emission radiances
     Lopti = calc_radiance(T, opti_y_vs_e)
     Lswir = calc_radiance(T, swir_y_vs_e)
     Lmwir = calc_radiance(T, mwir_y_vs_e)
     Llwir = calc_radiance(T, lwir_y_vs_e)
     Ltotal = calc_radiance(T, y_vs_e)
 
+    # Now we need to add spectral line radiances to the thermal
     # Spectral Line radiances
+
     spectral_lines = [.385e-6, .395e-6, .413e-6, .421e-6, .437e-6] # LIST DESIRED SPECTRAL LINES HERE
     broad_width = 5e-9 # SPECIFY BROADENING WIDTH
+
     L_slines = []
+
+
     for s_line in spectral_lines: # Iterate through each spectral lines and append name and value to L_slines
         # Each spectral line has 100% of the peak black body spectral radiance
         name = str(s_line)
@@ -74,4 +83,4 @@ def get_center_emission_band(ycenter, width, y_vs_e=y_vs_e):
 
 
 
-main()
+main(y)
