@@ -8,3 +8,4 @@ y = y_vs_e[:,0] * 1e-6 # All wavelengths from optical to lwir spectrum in
 e = y_vs_e[:, 1] # All emissivities corresponding to y
 y_vs_e = np.column_stack((y, e))
 
+

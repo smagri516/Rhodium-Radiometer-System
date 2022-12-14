@@ -3,7 +3,7 @@ import math
 from scipy.integrate import simps
 pi = np.pi
 
-def calc_radiance(T, y_e_band, broadening_width=5e-9):
+def calc_radiance(T, y_e_band, broadening_width=5e-9, return_yvsBand=False):
     """
     Calculate the radiance of a given light band
     :param T: Temperature in K of material
@@ -34,10 +34,38 @@ def calc_radiance(T, y_e_band, broadening_width=5e-9):
     if int(len(y)) == 1:
         L_total = Ly_e.item() * broadening_width
     else:
-        L_total = simps(Ly_e, y)
+        L_total = simps(Ly_e, y) # otherwise, do numerical intergration over band
 
+    # This if statement is you want to return the total radiance and the yvsLy_e array
+    if return_yvsBand:
+        y_vs_Lye = np.column_stack((y, Ly_e))
+        return L_total, y_vs_Lye
 
     return L_total
+
+
+def calc_line_emission_L(peakLybb, lineWidth, initialLy):
+    """
+    Calculate the total radiance of line emission with given width. This just uses a constant initial L
+    and line width. THIS IS NOT FOR USE IN THE NON-CONSTANT EMISSION DATA
+    :param peakLybb: Peak spectral radiance of a black body
+    :param lineWidth: Band width to be integrated over
+    :return: Total spectral radiance of line emission + thermal emission
+    """
+
+    Lytotal = peakLybb + initialLy
+    return Lytotal * lineWidth
+
+def update_yVsLye(yvsLye, peakLybb, index):
+    """
+    Take the yVsLye data and update the specific spectral radiances that haave line emission
+    :param yvsLye: numpy array with y vs. Lye
+    :param peakLybb: peak black body spectral radiance
+    :param index: index to be updated
+    :return: None
+    """
+
+    yvsLye[index][1] += peakLybb
 
 """def peak_bb_emission(y, T):
     
