@@ -67,6 +67,16 @@ def update_yVsLye(yvsLye, peakLybb, index):
 
     yvsLye[index][1] += peakLybb
 
+def calc_idc(isig, idark, ibkg):
+
+    idc = 0
+    idc+= ibkg
+    idc+= idark
+    idc += isig
+    return idc
+
+
+
 """def peak_bb_emission(y, T):
     
     # Calculate peak bb emission,

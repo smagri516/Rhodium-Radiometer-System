@@ -1,22 +1,27 @@
 # Sebastian Magri
+import math
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import simps
 
-from emissivity_data import y, e, y_vs_e
-from calc_radiance import calc_radiance, calc_line_emission_L, update_yVsLye #, peak_bb_emission
-from power_to_det import system_specs, radianceToIncidentPower
+from emissivity_data import y, e, y_vs_e, resonsivityVsWavelength
+from slice_band import defineWorkingRegion
+from calc_radiance import calc_radiance, calc_line_emission_L, update_yVsLye, calc_idc #, peak_bb_emission
+from power_to_det import system_specs, radianceToIncidentPower, systemCoeff, calculateSignal, calc_totalNoise, calculate_1f, calc_ijohnson
 from plotting import plot_y_vs_Ly
 
 
-T = 1677  # Temperature in K of metal sample
+c = 3e8 # speed of light
+q = 1.6e-19 # charge of electron
+kb = 1.38e-23 # Boltzmann's constant
+
 def main(y):
 
     # TODO change peak_ybb and peak_Lybb to not manual entry but to API or calculated
+    T = 2000  # Temperature in K of metal sample
     peak_y = 1.727e-6 # in m -- peak spectral wavelength
-    peak_Lybb = 54325700000 # in W/m^2/sr/m
-
+    peak_Lybb = 131066e6 # in W/m^2/sr/m
 
     # Get bands to be working with. The outputs are y_vs_e of band
     opti_y_vs_e, opti_y, opti_e = get_band(.38e-6, .78e-6) # Optical band
@@ -49,31 +54,82 @@ def main(y):
         lines_emission_L.append([sline[0], L_line])
 
 
-
     plot_y_vs_Ly(y_vs_Lye) # This saves y_vs_Ly plot on MATLAB
     # plt.plot(y_vs_Lye) # This plots in matplotlib ,but I like MATLAB better, so I'd rather plot there
-
-
+    # plt.xlabel("Wavelength")
+    # plt.ylabel("Spectral Radiance (W/m^2/sr/m)")
+    # plt.show()
 
     # Calculate power onto detector system First calculate the system specifications given your detector radius,
     # spot, Fno, and reduced distance from spot to lens
+
     Rdet = .0001 # Radius of detector in meters
-    Rspot = 0.3 # m
-    Fno = 4
-    zML_red = 1.9833333
+    Rspot = 0.5 # m
+    Fno = 1.8
+    zML_red = 1
     Rlens, f1, zLD_red = system_specs(Rdet,Rspot, Fno, zML_red) # outputs the radius of lens, focal length, and reduced distance from lens to det
     rhoa = .04
     rhob = .04
     aPrime = .02 # mm^-1
     tWindow = 2
-
+    Coeff = systemCoeff(rhoa, rhob, aPrime, tWindow, Rdet, Rlens, zLD_red)
     # TIME TO CALCULATE SIGNAL
-    # yvsR = resonsivityVsWavelength(y)
-    Llines = [row[1] for row in lines_emission_L]
-    Lsignal = sum(Llines)
-    incidentDetectorSignal = radianceToIncidentPower(Lsignal,rhoa, rhob, aPrime, tWindow,
-                                                         Rdet, Rlens, zLD_red)
+    bandBottom = 380e-9
+    bandTop =440e-9
+    f_top = c/bandBottom
+    f_bottom = c/bandTop
 
+    y_working = defineWorkingRegion(y, bandBottom, bandTop)
+    arrLength = int(len(y_working[:, 0]))  # Define array length to slice later
+    y_working = resonsivityVsWavelength(y_working) # Add responsivity to matrix
+    y_working = np.column_stack([y_working, y_vs_Lye[:arrLength,1]])
+
+    # The following loop calcluates the detector signal from the emission lines
+    # The detector signal is in amps
+    i_Signal = 0
+    for j in range(len(sline_indicies)):
+        Lsignal = lines_emission_L[j][1]
+        incidentDetectorPhi = radianceToIncidentPower(Lsignal,rhoa, rhob, aPrime, tWindow,
+                                                         Rdet, Rlens, zLD_red)
+        line_emission_phi = incidentDetectorPhi * y_working[j,2] # Take our power and then multiply
+                        # Responsivity at that wavelength
+        i_Signal += line_emission_phi
+
+    # NOISE CALCULATIONS
+
+    noises = []
+    # Calculate background noise as a result of thermal emission
+    working_band_y_vs_e = get_band(bandBottom, bandTop)
+    # Take Ly and integrate with R(y) and multiply by Coeff
+    i_bkgnd_noise = 1e-1*calculateSignal(y_working , Coeff)
+    noises.append(i_bkgnd_noise)
+    i_dark = 50e-12 # Dark noise arising from 150 V Reverse Bias
+    noises.append(i_dark)
+    bandwidth = c/380e-9 - c/450e-9# Bandpass filter
+    bandwidth = 90e6-50e3
+    i_shot = math.sqrt(2 * q *(i_Signal + i_bkgnd_noise + i_dark) * bandwidth) # to agree with Lye units
+    noises.append(i_shot)
+    Rload = 50 # ohms
+    T_det = 253 # in K at detector
+    i_johnson = calc_ijohnson(T_det, bandwidth, Rload)
+    noises.append(i_johnson)
+    idc = calc_idc(i_dark, i_Signal, i_bkgnd_noise)
+    i_1f = calculate_1f(idc, f_top, f_bottom)
+    noises.append(i_1f)
+    i_noise = calc_totalNoise(noises)
+
+    print("Background Noise: ", i_bkgnd_noise)
+    print("Dark Noise: ", i_dark)
+    print("Shot Noise", i_shot)
+    print("Johnson Noise: ", i_johnson)
+    print("1/f Noise: ", i_1f)
+    print("Total Noise: ", i_noise)
+    print("Total Signal: ", i_Signal)
+
+
+    SNR = (i_Signal / i_noise)
+
+    print("Calculated SNR: ", SNR)
 
 
 
@@ -105,7 +161,6 @@ def get_center_emission_band_indicies(slines, width, y_vs_e=y_vs_e):
             s_index_scalar = get_center_emission_band_indicies([sline], width*2)[0]
             s_index = np.ndarray((1,))
             s_index.fill(s_index_scalar)
-            print("Help")
         # If there are multiple indexes, take the middle one
         elif int(len(band_indicies[0])) > 1:
             ns = int(len(band_indicies[0]))
